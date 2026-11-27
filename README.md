@@ -37,3 +37,4 @@ TESTS
 
 OUT OF SCOPE
 Login, backend, IPv6, names or addresses detection, machine learning, saving history.
+The Vercel Deployed link : https://cyber-three-snowy.vercel.app/
