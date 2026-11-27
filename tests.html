@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PII Sanitizer — Detector Tests</title>
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; max-width: 760px; margin: 2rem auto; padding: 0 1rem; color: #1e293b; }
+    h1 { font-size: 1.4rem; margin-bottom: 0.5rem; }
+    #summary { font-weight: 600; margin-bottom: 1rem; padding: 0.6rem 0.9rem; border-radius: 6px; }
+    #summary.ok { background: #dcfce7; color: #166534; }
+    #summary.fail { background: #fee2e2; color: #991b1b; }
+    ul { list-style: none; padding: 0; }
+    li { padding: 0.5rem 0.75rem; margin-bottom: 0.4rem; border-radius: 5px; border-left: 4px solid; }
+    li.pass { background: #f0fdf4; border-color: #16a34a; }
+    li.fail { background: #fef2f2; border-color: #dc2626; }
+  </style>
+</head>
+<body>
+  <h1>PII Sanitizer — Tests</h1>
+  <div id="summary">Running...</div>
+  <ul id="results"></ul>
+
+  <script src="js/detectors.js"></script>
+  <script src="js/redact.js"></script>
+  <script>
+    (function () {
+      var resultsEl = document.getElementById('results');
+      var summaryEl = document.getElementById('summary');
+      var passed = 0;
+      var total = 0;
+
+      function test(name, fn) {
+        total++;
+        var li = document.createElement('li');
+        try {
+          fn();
+          passed++;
+          li.className = 'pass';
+          li.textContent = 'PASS: ' + name;
+        } catch (err) {
+          li.className = 'fail';
+          li.textContent = 'FAIL: ' + name + ' — ' + err.message;
+        }
+        resultsEl.appendChild(li);
+      }
+
+      function assert(condition, message) {
+        if (!condition) {
+          throw new Error(message || 'Assertion failed');
+        }
+      }
+
+      test('Luhn valid card (4111 1111 1111 1111)', function () {
+        assert(luhnCheck('4111 1111 1111 1111') === true, 'luhnCheck should return true');
+        var matches = detectAll('Card: 4111 1111 1111 1111');
+        assert(matches.length === 1 && matches[0].type === 'CREDIT_CARD', 'Should detect CREDIT_CARD');
+      });
+
+      test('Luhn invalid card (4111 1111 1111 1112)', function () {
+        assert(luhnCheck('4111 1111 1111 1112') === false, 'luhnCheck should return false');
+        var matches = detectAll('Order: 4111 1111 1111 1112');
+        assert(matches.length === 0, 'Invalid Luhn should not be flagged');
+      });
+
+      test('IPv4 valid (192.168.1.20) and invalid (999.1.1.1 rejected)', function () {
+        var matches = detectAll('Good 192.168.1.20 and bad 999.1.1.1');
+        assert(matches.length === 1, 'Expected 1 IPv4 match, got ' + matches.length);
+        assert(matches[0].type === 'IPV4' && matches[0].value === '192.168.1.20', 'Wrong IPv4 matched');
+      });
+
+      test('Overlapping matches resolved (longer wins; equal length uses priority)', function () {
+        // 12-digit Aadhaar starting 2-9 vs 10-digit Indian mobile inside it
+        var m1 = detectAll('ID 987654321012');
+        assert(m1.length === 1 && m1[0].type === 'AADHAAR', '12-digit Aadhaar should beat 10-digit phone');
+
+        // 16-digit valid Luhn card starting with 6-9 vs Aadhaar/phone
+        var m2 = detectAll('Card 6011111111111117');
+        assert(m2.length === 1 && m2[0].type === 'CREDIT_CARD', 'CREDIT_CARD should win over shorter/equal overlaps');
+      });
+
+      test('PAN valid format (ABCPE1234F) and invalid 4th letter (ABCXE1234F)', function () {
+        var valid = detectAll('PAN ABCPE1234F');
+        assert(valid.length === 1 && valid[0].type === 'PAN' && valid[0].value === 'ABCPE1234F', 'Valid PAN missed');
+
+        var invalid = detectAll('Not PAN ABCXE1234F');
+        assert(invalid.length === 0, 'Invalid 4th letter PAN should not match');
+      });
+
+      test('Aadhaar plain and 4-4-4 grouped formats, first digit 2-9', function () {
+        var m = detectAll('Plain 234567890123 and grouped 9876-5432-1098');
+        assert(m.length === 2, 'Expected 2 Aadhaar matches, got ' + m.length);
+        assert(m[0].type === 'AADHAAR' && m[1].type === 'AADHAAR', 'Both should be AADHAAR');
+
+        var invalid = detectAll('Starts with 1: 1234 5678 9012');
+        assert(invalid.length === 0, 'Aadhaar starting with 1 should not match');
+      });
+
+      test('Full mode replaces all detections with [REDACTED]', function () {
+        var text = 'Email john@example.com and IP 192.168.1.20';
+        var entities = detectAll(text);
+        var res = redactText(text, entities, 'full');
+        assert(res.output === 'Email [REDACTED] and IP [REDACTED]', 'Unexpected full output: ' + res.output);
+        assert(res.segments.length === 4, 'Expected 4 segments');
+        assert(res.segments[1].type === 'EMAIL' && res.segments[3].type === 'IPV4', 'Entity segment types mismatch');
+        var counts = countByType(entities);
+        assert(counts.EMAIL === 1 && counts.IPV4 === 1, 'countByType mismatch');
+      });
+
+      test('Partial mode masks card, email, and IPv4', function () {
+        var text = 'Card 4111 1111 1111 1111, Email john@example.com, IP 192.168.1.20';
+        var res = redactText(text, detectAll(text), 'partial');
+        assert(
+          res.output === 'Card XXXX XXXX XXXX 1111, Email j***@example.com, IP XXX.XXX.XXX.20',
+          'Unexpected partial output: ' + res.output
+        );
+      });
+
+      test('Pseudo mode gives same placeholder to same email in different cases', function () {
+        var text = 'First John@Example.com then john@example.com';
+        var res = redactText(text, detectAll(text), 'pseudo');
+        assert(res.output === 'First EMAIL_01 then EMAIL_01', 'Unexpected pseudo output: ' + res.output);
+        assert(res.mapping.length === 1 && res.mapping[0].placeholder === 'EMAIL_01', 'Mapping should list unique placeholder once');
+      });
+
+      test('Pseudo mode numbers two different emails as EMAIL_01 and EMAIL_02', function () {
+        var text = 'a@test.com and b@test.com';
+        var res = redactText(text, detectAll(text), 'pseudo');
+        assert(res.output === 'EMAIL_01 and EMAIL_02', 'Unexpected pseudo output: ' + res.output);
+        assert(res.mapping.length === 2, 'Expected 2 mapping entries');
+      });
+
+      test('Pseudo mode normalizes +91 98765 43210 and 9876543210 to same PHONE_01', function () {
+        var text = 'Call +91 98765 43210 or 9876543210';
+        var res = redactText(text, detectAll(text), 'pseudo');
+        assert(res.output === 'Call PHONE_01 or PHONE_01', 'Unexpected phone pseudo output: ' + res.output);
+        assert(res.mapping.length === 1 && res.mapping[0].placeholder === 'PHONE_01', 'Expected single PHONE_01 mapping');
+      });
+
+      summaryEl.textContent = passed + ' / ' + total + ' tests passed';
+      summaryEl.className = passed === total ? 'ok' : 'fail';
+    })();
+  </script>
+</body>
+</html>
