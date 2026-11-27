@@ -79,12 +79,26 @@
         assert(m2.length === 1 && m2[0].type === 'CREDIT_CARD', 'CREDIT_CARD should win over shorter/equal overlaps');
       });
 
-      test('PAN valid format (ABCPE1234F) and invalid 4th letter (ABCXE1234F)', function () {
-        var valid = detectAll('PAN ABCPE1234F');
-        assert(valid.length === 1 && valid[0].type === 'PAN' && valid[0].value === 'ABCPE1234F', 'Valid PAN missed');
+      test('PAN valid formats (ABCPE1234F, ABCXE1234F, ABCDE1234F, LMNOP3198B, QWERT5501Z) and rejects extra digit', function () {
+        var valid = detectAll('PAN ABCPE1234F and ABCXE1234F');
+        assert(
+          valid.length === 2 &&
+          valid[0].type === 'PAN' && valid[0].value === 'ABCPE1234F' &&
+          valid[1].type === 'PAN' && valid[1].value === 'ABCXE1234F',
+          'Both ABCPE1234F and ABCXE1234F should match as PAN'
+        );
 
-        var invalid = detectAll('Not PAN ABCXE1234F');
-        assert(invalid.length === 0, 'Invalid 4th letter PAN should not match');
+        var more = detectAll('ABCDE1234F LMNOP3198B QWERT5501Z');
+        assert(
+          more.length === 3 &&
+          more[0].type === 'PAN' && more[0].value === 'ABCDE1234F' &&
+          more[1].type === 'PAN' && more[1].value === 'LMNOP3198B' &&
+          more[2].type === 'PAN' && more[2].value === 'QWERT5501Z',
+          'Expected ABCDE1234F, LMNOP3198B, and QWERT5501Z to be detected as PAN'
+        );
+
+        var extraDigit = detectAll('ABCDE12345F');
+        assert(extraDigit.length === 0, 'ABCDE12345F (extra digit) should not match');
       });
 
       test('Aadhaar plain and 4-4-4 grouped formats, first digit 2-9', function () {
@@ -135,6 +149,48 @@
         var res = redactText(text, detectAll(text), 'pseudo');
         assert(res.output === 'Call PHONE_01 or PHONE_01', 'Unexpected phone pseudo output: ' + res.output);
         assert(res.mapping.length === 1 && res.mapping[0].placeholder === 'PHONE_01', 'Expected single PHONE_01 mapping');
+      });
+
+      test('countLuhnRejected counts 13-19 digit candidates failing Luhn', function () {
+        var text = 'Valid 4111 1111 1111 1111, Fake1 4111 1111 1111 1112, Fake2 1234-5678-9012-3456';
+        assert(countLuhnRejected(text) === 2, 'Expected 2 Luhn-rejected candidates, got ' + countLuhnRejected(text));
+      });
+
+      test('Phone detection supports international, parenthesised, and Indian formats without false positives', function () {
+        var intl1 = detectAll('Call +1 (650) 555-0199');
+        assert(intl1.length === 1 && intl1[0].type === 'PHONE' && intl1[0].value === '+1 (650) 555-0199', 'Failed +1 (650) 555-0199');
+
+        var intl2 = detectAll('UK +44 20 7946 0958');
+        assert(intl2.length === 1 && intl2[0].type === 'PHONE' && intl2[0].value === '+44 20 7946 0958', 'Failed +44 20 7946 0958');
+
+        var ind = detectAll('IN +91 98111 22334 and 9845012345');
+        assert(ind.length === 2 && ind[0].type === 'PHONE' && ind[1].type === 'PHONE', 'Failed Indian phone formats');
+
+        var nonPhones = detectAll('Refs 8844221100998877 and 1234567890123456');
+        assert(nonPhones.length === 0, '16-digit non-Luhn numbers should not be detected');
+
+        var ip = detectAll('Host 172.16.254.1');
+        assert(ip.length === 1 && ip[0].type === 'IPV4' && ip[0].value === '172.16.254.1', 'IPv4 should not be detected as phone');
+      });
+
+      test('IPv6 detection, redaction, and non-IPv6 rejection', function () {
+        var full = detectAll('Addr 2405:201:4009:8812:0000:0000:0000:0001');
+        assert(full.length === 1 && full[0].type === 'IPV6' && full[0].value === '2405:201:4009:8812:0000:0000:0000:0001', 'Full IPv6 should be detected');
+
+        var partial = redactText('Addr 2405:201:4009:8812:0000:0000:0000:0001', full, 'partial');
+        assert(partial.output === 'Addr XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:0001', 'Unexpected IPv6 partial output: ' + partial.output);
+
+        var compressed = detectAll('Loopback ::1');
+        assert(compressed.length === 1 && compressed[0].type === 'IPV6' && compressed[0].value === '::1', 'Compressed ::1 should be detected');
+
+        var pseudo = redactText('2405:201:4009:8812:0000:0000:0000:0001 and ::1', detectAll('2405:201:4009:8812:0000:0000:0000:0001 and ::1'), 'pseudo');
+        assert(pseudo.output === 'IPV6_01 and IPV6_02', 'Unexpected IPv6 pseudo output: ' + pseudo.output);
+
+        var timeAndMac = detectAll('Time 12:30:45 and MAC 00:1A:2B:3C:4D:5E');
+        assert(timeAndMac.length === 0, 'Times and MAC addresses should not be detected as IPv6');
+
+        var ipv4 = detectAll('Host 172.31.48.102');
+        assert(ipv4.length === 1 && ipv4[0].type === 'IPV4' && ipv4[0].value === '172.31.48.102', '172.31.48.102 should still be detected as IPV4');
       });
 
       summaryEl.textContent = passed + ' / ' + total + ' tests passed';

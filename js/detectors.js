@@ -7,7 +7,8 @@
     PAN: 2,
     AADHAAR: 3,
     IPV4: 4,
-    PHONE: 5
+    IPV6: 5,
+    PHONE: 6
   };
 
   function luhnCheck(digits) {
@@ -71,8 +72,8 @@
       candidates.push({ type: 'PHONE', start: start, end: end, value: value });
     }
 
-    // International numbers starting with + and 8-15 digits
-    var intlRe = /\+\d(?:[ -]?\d){7,14}/g;
+    // International numbers with leading + or parenthesised area code, 8-15 digits
+    var intlRe = /(?:\+(?:\(\d+\)|\d+)(?:[ -]?(?:\(\d+\)|\d))+|(?:\d{1,3}[ -]?)?\(\d{1,5}\)(?:[ -]?\d)+)/g;
     while ((match = intlRe.exec(text)) !== null) {
       var iStart = match.index;
       var iValue = match[0];
@@ -117,14 +118,22 @@
   }
 
   function collectPAN(text, candidates) {
-    var re = /\b[A-Z]{3}[PCHFATBLJG][A-Z]\d{4}[A-Z]\b/g;
+    var re = /[A-Z]{5}\d{4}[A-Z]/g;
     var match;
     while ((match = re.exec(text)) !== null) {
+      var start = match.index;
+      var value = match[0];
+      var end = start + value.length;
+      var prev = start > 0 ? text.charAt(start - 1) : '';
+      var next = end < text.length ? text.charAt(end) : '';
+      if (isWordOrDigit(prev) || isWordOrDigit(next)) {
+        continue;
+      }
       candidates.push({
         type: 'PAN',
-        start: match.index,
-        end: match.index + match[0].length,
-        value: match[0]
+        start: start,
+        end: end,
+        value: value
       });
     }
   }
@@ -200,6 +209,55 @@
     return kept;
   }
 
+  function isValidIPv6(value) {
+    if (value.indexOf(':::') !== -1) {
+      return false;
+    }
+    var parts = value.split('::');
+    if (parts.length > 2) {
+      return false;
+    }
+    if (parts.length === 1) {
+      return /^[0-9a-fA-F]{1,4}(?::[0-9a-fA-F]{1,4}){7}$/.test(value);
+    }
+    var left = parts[0] === '' ? [] : parts[0].split(':');
+    var right = parts[1] === '' ? [] : parts[1].split(':');
+    var totalGroups = left.length + right.length;
+    if (totalGroups < 1 || totalGroups > 7) {
+      return false;
+    }
+    var hexGroupRe = /^[0-9a-fA-F]{1,4}$/;
+    for (var i = 0; i < left.length; i++) {
+      if (!hexGroupRe.test(left[i])) {
+        return false;
+      }
+    }
+    for (var j = 0; j < right.length; j++) {
+      if (!hexGroupRe.test(right[j])) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  function collectIPv6(text, candidates) {
+    var re = /(?:[0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}/g;
+    var match;
+    while ((match = re.exec(text)) !== null) {
+      var start = match.index;
+      var value = match[0];
+      var end = start + value.length;
+      var prev = start > 0 ? text.charAt(start - 1) : '';
+      var next = end < text.length ? text.charAt(end) : '';
+      if (isWordOrDigit(prev) || prev === ':' || isWordOrDigit(next) || next === ':') {
+        continue;
+      }
+      if (isValidIPv6(value)) {
+        candidates.push({ type: 'IPV6', start: start, end: end, value: value });
+      }
+    }
+  }
+
   function detectAll(text) {
     if (typeof text !== 'string' || text.length === 0) {
       return [];
@@ -210,10 +268,36 @@
     collectPAN(text, candidates);
     collectAadhaar(text, candidates);
     collectIPv4(text, candidates);
+    collectIPv6(text, candidates);
     collectPhones(text, candidates);
     return resolveOverlaps(candidates);
   }
 
+  function countLuhnRejected(text) {
+    if (typeof text !== 'string' || text.length === 0) {
+      return 0;
+    }
+    var re = /\d(?:[ -]?\d){12,18}/g;
+    var rejected = 0;
+    var match;
+    while ((match = re.exec(text)) !== null) {
+      var start = match.index;
+      var value = match[0];
+      var end = start + value.length;
+      var prev = start > 0 ? text.charAt(start - 1) : '';
+      var next = end < text.length ? text.charAt(end) : '';
+      if (isDigit(prev) || isDigit(next)) {
+        continue;
+      }
+      var digits = value.replace(/[ -]/g, '');
+      if (digits.length >= 13 && digits.length <= 19 && !luhnCheck(digits)) {
+        rejected++;
+      }
+    }
+    return rejected;
+  }
+
   global.luhnCheck = luhnCheck;
   global.detectAll = detectAll;
+  global.countLuhnRejected = countLuhnRejected;
 })(window);

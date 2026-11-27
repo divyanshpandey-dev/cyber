@@ -5,6 +5,7 @@
     EMAIL: 'EMAIL',
     PHONE: 'PHONE',
     IPV4: 'IP',
+    IPV6: 'IPV6',
     PAN: 'PAN',
     AADHAAR: 'AADHAAR',
     CREDIT_CARD: 'CARD'
@@ -42,11 +43,20 @@
         return 'XXX.XXX.XXX.' + octets[3];
       }
     }
+    if (type === 'IPV6') {
+      var groups = value.split(':');
+      for (var k = 0; k < groups.length - 1; k++) {
+        if (groups[k] !== '') {
+          groups[k] = 'XXXX';
+        }
+      }
+      return groups.join(':');
+    }
     return partialMaskDefault(value);
   }
 
   function normalizeValue(type, value) {
-    if (type === 'EMAIL') {
+    if (type === 'EMAIL' || type === 'IPV6') {
       return value.toLowerCase();
     }
     if (type === 'PHONE') {

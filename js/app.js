@@ -1,7 +1,7 @@
 (function () {
   'use strict';
 
-  var ENTITY_TYPES = ['EMAIL', 'PHONE', 'IPV4', 'PAN', 'AADHAAR', 'CREDIT_CARD'];
+  var ENTITY_TYPES = ['EMAIL', 'PHONE', 'IPV4', 'IPV6', 'PAN', 'AADHAAR', 'CREDIT_CARD'];
   var MAX_FILE_BYTES = 5 * 1024 * 1024;
   var DEBOUNCE_MS = 150;
 
@@ -18,10 +18,12 @@
   var fileWarning = document.getElementById('file-warning');
   var loadSampleBtn = document.getElementById('load-sample-btn');
   var clearBtn = document.getElementById('clear-btn');
+  var copyBtn = document.getElementById('copy-btn');
   var downloadBtn = document.getElementById('download-btn');
   var modeRadios = document.querySelectorAll('input[name="redaction-mode"]');
   var countsList = document.getElementById('counts-list');
   var totalCountEl = document.getElementById('total-count');
+  var luhnRejectedEl = document.getElementById('luhn-rejected-count');
   var originalView = document.getElementById('original-view');
   var sanitizedView = document.getElementById('sanitized-view');
   var mappingSection = document.getElementById('mapping-section');
@@ -180,7 +182,9 @@
     var result = redactText(text, entities, mode);
 
     latestOutput = result.output;
+    copyBtn.disabled = text.length === 0;
     downloadBtn.disabled = text.length === 0;
+    luhnRejectedEl.textContent = String(countLuhnRejected(text));
 
     renderCounts(counts, entities.length);
     renderOriginal(text, entities);
@@ -241,6 +245,18 @@
       showWarning('Could not read the selected file.');
     };
     reader.readAsText(file);
+  });
+
+  copyBtn.addEventListener('click', function () {
+    if (!latestOutput || !navigator.clipboard || !navigator.clipboard.writeText) {
+      return;
+    }
+    navigator.clipboard.writeText(latestOutput).then(function () {
+      copyBtn.textContent = 'Copied';
+      setTimeout(function () {
+        copyBtn.textContent = 'Copy';
+      }, 1500);
+    });
   });
 
   downloadBtn.addEventListener('click', function () {
