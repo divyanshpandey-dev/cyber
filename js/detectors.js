@@ -138,7 +138,9 @@
       var end = start + value.length;
       var prev = start > 0 ? text.charAt(start - 1) : '';
       var next = end < text.length ? text.charAt(end) : '';
-      if (isDigit(prev) || isDigit(next)) {
+      var prevCont = (prev === ' ' || prev === '-') && start >= 2 && isDigit(text.charAt(start - 2));
+      var nextCont = (next === ' ' || next === '-') && end + 1 < text.length && isDigit(text.charAt(end + 1));
+      if (isDigit(prev) || isDigit(next) || prevCont || nextCont) {
         continue;
       }
       candidates.push({ type: 'AADHAAR', start: start, end: end, value: value });

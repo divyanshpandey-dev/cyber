@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PII Sanitizer</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <div class="header-title">
+        <h1>PII Sanitizer</h1>
+        <p class="subtitle">Detect and redact sensitive information offline</p>
+      </div>
+      <span class="privacy-badge">Processed locally. Nothing leaves your browser.</span>
+    </header>
+
+    <section class="controls" aria-label="Input and redaction controls">
+      <div class="input-header">
+        <label for="source-text" class="section-label">Input Text</label>
+        <div class="button-row">
+          <label class="btn btn-secondary file-label" for="file-input">Upload .txt / .csv</label>
+          <input id="file-input" type="file" accept=".txt,.csv" hidden>
+          <button id="load-sample-btn" type="button" class="btn btn-secondary">Load sample</button>
+          <button id="clear-btn" type="button" class="btn btn-ghost">Clear</button>
+        </div>
+      </div>
+
+      <p id="file-warning" class="warning hidden" role="alert"></p>
+
+      <textarea
+        id="source-text"
+        rows="7"
+        placeholder="Paste text here or upload a .txt / .csv file..."
+        spellcheck="false"
+      ></textarea>
+
+      <fieldset class="mode-group">
+        <legend class="section-label">Redaction Mode</legend>
+        <label class="radio-option">
+          <input type="radio" name="redaction-mode" value="full" checked>
+          <span>Full Mask</span>
+        </label>
+        <label class="radio-option">
+          <input type="radio" name="redaction-mode" value="partial">
+          <span>Partial Mask</span>
+        </label>
+        <label class="radio-option">
+          <input type="radio" name="redaction-mode" value="pseudo">
+          <span>Pseudonymize</span>
+        </label>
+      </fieldset>
+    </section>
+
+    <section id="counts-bar" class="counts-bar" aria-label="Detection counts">
+      <div id="counts-list" class="counts-list"></div>
+      <div class="total-count">Total: <strong id="total-count">0</strong></div>
+    </section>
+
+    <section class="panels" aria-label="Original and sanitized comparison">
+      <div class="panel">
+        <div class="panel-header">
+          <h2>Original</h2>
+        </div>
+        <div id="original-view" class="panel-body"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <h2>Sanitized</h2>
+          <button id="download-btn" type="button" class="btn btn-primary" disabled>Download sanitized file</button>
+        </div>
+        <div id="sanitized-view" class="panel-body"></div>
+      </div>
+    </section>
+
+    <section id="mapping-section" class="mapping-section hidden" aria-label="Pseudonym mapping table">
+      <h2>Pseudonym Mapping</h2>
+      <div class="table-wrap">
+        <table class="mapping-table">
+          <thead>
+            <tr>
+              <th>Placeholder</th>
+              <th>Original</th>
+              <th>Type</th>
+            </tr>
+          </thead>
+          <tbody id="mapping-body"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <script src="js/detectors.js"></script>
+  <script src="js/redact.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
